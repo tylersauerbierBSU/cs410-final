@@ -63,6 +63,14 @@ public class GradeManagerShell {
                 selectClass(command);
             } else if (command.equals("show-class")) {
                 showClass();
+            } else if (command.equals("show-categories")) {
+                showCategories();
+            } else if (command.startsWith("add-category")) {
+                addCategory(command);
+            } else if (command.equals("show-assignment")) {
+                showAssignments();
+            } else if (command.startsWith("add-assignment")) {
+                addAssignment(command);
             } else {
                 System.out.println("Unknown command. Type 'help' for commands.");
             }
@@ -158,6 +166,196 @@ public class GradeManagerShell {
                 } else {
                     System.out.println("Class with ID " + currentClassId + " does not exist.");
                 }
+            }
+        }
+    }
+
+    // Methods for the Category and Assignment Management
+    /**
+     * Method to list all the categories with their weights
+     */
+    private void showCategories() throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
+        }
+
+        String sql = "SELECT Name, Weight FROM Categories WHERE CourseID = ?";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, Integer.parseInt(currentClassId)); // Assuming currentClassId is a String
+
+        try (ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                System.out.println("Categories for Course ID " + currentClassId + ":");
+                do {
+                    String name = rs.getString("Name");
+                    double weight = rs.getDouble("Weight");
+                    System.out.printf("  - %s (%.2f%%)\n", name, weight);
+                } while (rs.next());
+            } else {
+                System.out.println("No categories found for this class.");
+            }
+        }
+    }
+
+
+    /**
+     * Method to add a new category
+     * @param - command
+     */
+    private void addCategory(String command) throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
+        }
+
+        // Extract category name and weight from the command
+        String[] parts = command.split(" ");
+        if (parts.length != 3) {
+            System.out.println("Invalid add-category command format. Usage: add-category <name> <weight>");
+            return;
+        }
+
+        String name = parts[1];
+        double weight;
+        try {
+            weight = Double.parseDouble(parts[2]);
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid weight. Please enter a decimal number.");
+            return;
+        }
+
+        // Validate weight (0 to 100)
+        if (weight < 0 || weight > 100) {
+            System.out.println("Weight must be between 0 and 100.");
+            return;
+        }
+
+        // Prepare and execute the insert statement
+        String sql = "INSERT INTO Categories (CourseID, Name, Weight) VALUES (?, ?, ?)";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, Integer.parseInt(currentClassId));
+        stmt.setString(2, name);
+        stmt.setDouble(3, weight);
+
+        try {
+            stmt.executeUpdate();
+            System.out.println("Category '" + name + "' added successfully.");
+        } catch (SQLException e) {
+            System.out.println("Error adding category: " + e.getMessage());
+        }
+    }
+
+
+    /**
+     * Lists all the assignments with their point values grouped by category
+     */
+    private void showAssignments() throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
+        }
+
+        String sql = "SELECT c.Name AS CategoryName, a.Name AS AssignmentName, a.Points " +
+                "FROM Assignments a " +
+                "INNER JOIN Categories c ON a.CategoryID = c.CategoryID " +
+                "WHERE c.CourseID = ?";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, Integer.parseInt(currentClassId));
+
+        try (ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                System.out.println("Assignments for Course ID " + currentClassId + ":");
+                String currentCategory = null;
+                do {
+                    String categoryName = rs.getString("CategoryName");
+                    String assignmentName = rs.getString("AssignmentName");
+                    int points = rs.getInt("Points");
+
+                    if (currentCategory == null || !currentCategory.equals(categoryName)) {
+                        // New category
+                        if (currentCategory != null) {
+                            System.out.println("  - Total: - points"); // Add total for previous category (if any)
+                        }
+                        currentCategory = categoryName;
+                        System.out.println("  Category: " + categoryName);
+                    }
+
+                    System.out.printf("    - %s (%d points)\n", assignmentName, points);
+                } while (rs.next());
+
+                // Print total for the last category
+                if (currentCategory != null) {
+                    System.out.println("  - Total: - points"); // Placeholder, calculate actual total here
+                }
+            } else {
+                System.out.println("No assignments found for this class.");
+            }
+        }
+    }
+
+    /**
+     * Adds a new assignment
+     */
+    private void addAssignment(String command) throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
+        }
+
+        // Extract assignment details from the command
+        String[] parts = command.split(" ");
+        if (parts.length != 5) {
+            System.out.println("Invalid add-assignment command format. Usage: add-assignment <name> <category> <description> <points>");
+            return;
+        }
+
+        String name = parts[1];
+        String categoryName = parts[2];
+        String description = parts[3];
+        int points;
+        try {
+            points = Integer.parseInt(parts[4]);
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid points. Please enter a whole number.");
+            return;
+        }
+
+        // Find the CategoryID for the given category name
+        int categoryID = getCategoryID(categoryName);
+        if (categoryID == -1) {
+            System.out.println("Category '" + categoryName + "' not found.");
+            return;
+        }
+
+        // Prepare and execute the insert statement
+        String sql = "INSERT INTO Assignments (CategoryID, Name, Description, Points) VALUES (?, ?, ?, ?)";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, categoryID);
+        stmt.setString(2, name);
+        stmt.setString(3, description);
+        stmt.setInt(4, points);
+
+        try {
+            stmt.executeUpdate();
+            System.out.println("Assignment '" + name + "' added successfully.");
+        } catch (SQLException e) {
+            System.out.println("Error adding assignment: " + e.getMessage());
+        }
+    }
+
+    // Helper method to find the CategoryID for a given category name
+    private int getCategoryID(String categoryName) throws SQLException {
+        String sql = "SELECT CategoryID FROM Categories WHERE CourseID = ? AND Name = ?";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, Integer.parseInt(currentClassId));
+        stmt.setString(2, categoryName);
+
+        try (ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getInt("CategoryID");
+            } else {
+                return -1;
             }
         }
     }

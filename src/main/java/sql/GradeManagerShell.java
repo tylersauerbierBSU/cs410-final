@@ -75,8 +75,8 @@ public class GradeManagerShell {
                 addAssignment(command);
             } else if (command.startsWith("add-student")) {
                 addStudent(command);
-            } else if (command.equals("show-students")) {
-                showStudents();
+            } else if (command.startsWith("show-students")) {
+                showStudents(command);
             } else {
                 System.out.println("Unknown command. Type 'help' for commands.");
             }
@@ -420,19 +420,37 @@ public class GradeManagerShell {
         }
     }
 
-    private void showStudents() throws SQLException {
+    private void showStudents(String command) throws SQLException {
         if (currentClassId == null) {
             System.out.println("No class is currently selected.");
             return;
         }
 
-        String sql = "SELECT s.Name " +
-                "FROM Students s " +
-                "INNER JOIN Enrollments e ON s.StudentID = e.StudentID " +
-                "WHERE e.CourseID = ?";
+        String[] parse = command.split(" ");
+
+        String sql;
+        String searchString;
+
+        if (parse.length > 1) {
+            sql = "SELECT s.Name " +
+                    "FROM Students s " +
+                    "INNER JOIN Enrollments e ON s.StudentID = e.StudentID " +
+                    "WHERE e.CourseID = ? AND LOWER(s.Name) LIKE ?";
+        } else {
+            sql = "SELECT s.Name " +
+                    "FROM Students s " +
+                    "INNER JOIN Enrollments e ON s.StudentID = e.StudentID " +
+                    "WHERE e.CourseID = ?";
+        }
 
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, Integer.parseInt(currentClassId));
+
+            if (parse.length > 1) {
+                if (command.startsWith("show-students ")) {
+                    stmt.setString(2, "%" + parse[1] + "%");
+                }
+            }
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) {
@@ -449,5 +467,7 @@ public class GradeManagerShell {
             System.out.println("Error fetching students: " + e.getMessage());
         }
     }
+
+
 
 }

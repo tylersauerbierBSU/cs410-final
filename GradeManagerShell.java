@@ -71,6 +71,10 @@ public class GradeManagerShell {
                 showAssignments();
             } else if (command.startsWith("add-assignment")) {
                 addAssignment(command);
+            } else if (command.startsWith("add-student")) {
+                addStudent(command);
+            } else if (command.equals("show-students")) {
+                showStudents();
             } else {
                 System.out.println("Unknown command. Type 'help' for commands.");
             }
@@ -171,6 +175,7 @@ public class GradeManagerShell {
     }
 
     // Methods for the Category and Assignment Management
+
     /**
      * Method to list all the categories with their weights
      */
@@ -303,9 +308,56 @@ public class GradeManagerShell {
             return;
         }
 
+        String[] parts = command.split(" ");
+
+        if (parts.length != 5) {
+            System.out.println("Invalid add-assignment command format. Usage: add-assignment <name> <category> <description> <points>");
+            return;
+        }
+
+        String name = parts[1];
+        String category = parts[2];
+        String description = parts[3];
+        int points;
+        try {
+            points = Integer.parseInt(parts[4]);
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid points format. Points must be an integer.");
+            return;
+        }
+
+        String sql = "INSERT INTO Assignments (CourseID, Name, Category, Description, Points) " +
+                "VALUES (?, ?, ?, ?, ?)";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, Integer.parseInt(currentClassId));
+            stmt.setString(2, name);
+            stmt.setString(3, category);
+            stmt.setString(4, description);
+            stmt.setInt(5, points);
+
+            stmt.executeUpdate();
+            System.out.println("Assignment '" + name + "' added successfully.");
+        } catch (SQLException e) {
+            System.out.println("Error adding assignment: " + e.getMessage());
+        }
+    }
+
+
+    // STUDENT MANAGEMENT CODE
+
+    /**
+     * Adds a new student
+     */
+    private void addStudent(String command) throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
+        }
+
         String[] parse = command.split(" ");
 
-        if (parse.length != 1 && parse.length != 4) {
+        if (parse.length != 2 && parse.length != 5) {
             System.out.println("Invalid add-assignment command format. Usage: add-assignment <username> " +
                     "[<studentID> <Last> <First>]");
             return;
@@ -313,20 +365,87 @@ public class GradeManagerShell {
 
         String sql;
 
-        if (parse.length == 1) { // this means it's the already existing student command
+        if (parse.length == 2) { // this means it's the already existing student command
+            sql = "INSERT INTO Enrollments (StudentID, CourseID) " +
+                    "SELECT StudentID, ? " +
+                    "FROM Students " +
+                    "WHERE Username = ? ";
 
+            PreparedStatement enrollStatement = conn.prepareStatement(sql);
+            enrollStatement.setInt(1, Integer.parseInt(currentClassId));
+            enrollStatement.setString(2, parse[1]);
+
+            try {
+                enrollStatement.executeUpdate();
+                System.out.println("Student enrolled successfully");
+            } catch (SQLException e) {
+                System.out.println("Error adding student or enrolling: " + e.getMessage());
+            }
         }
+        else { // this means it's the new student
 
-        else if (parse.length == 4) { // this means it's the new student
-            sql = "INSERT INTO Students (Username, Name) " +
-                    "VALUES (?, ?) " +
+            // first insert into students table
+            sql = "INSERT INTO Students (StudentID, Username, Name) " +
+                    "VALUES (?, ?, ?) " +
                     "ON DUPLICATE KEY UPDATE Name = VALUES(Name) ";
 
-            PreparedStatement stmt = conn.prepareStatement(sql);
-            stmt.setString(1, parse[0]);
+            PreparedStatement studentStmt = conn.prepareStatement(sql);
+            studentStmt.setInt(1, Integer.parseInt(parse[2]));
+            studentStmt.setString(2, parse[1]);
+            studentStmt.setString(3, parse[3] + " " + parse[4]);
+
+            sql = "INSERT INTO Enrollments (StudentID, CourseID) " +
+                    "SELECT StudentID, ? " +
+                    "FROM Students " +
+                    "WHERE Username = ? ";
+
+            PreparedStatement enrollStatement = conn.prepareStatement(sql);
+            enrollStatement.setInt(1, Integer.parseInt(currentClassId));
+            enrollStatement.setString(2, parse[1]);
+
+            try {
+                int r = studentStmt.executeUpdate();
+                enrollStatement.executeUpdate();
+                if (r == 1) {
+                    System.out.println("Student added and enrolled successfully");
+                }
+                else {
+                    System.out.println("Student name updated and enrolled successfully");
+                }
+            } catch (SQLException e) {
+                System.out.println("Error adding student or enrolling: " + e.getMessage());
+            }
+        }
+    }
+
+    private void showStudents() throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
         }
 
+        String sql = "SELECT s.Name " +
+                "FROM Students s " +
+                "INNER JOIN Enrollments e ON s.StudentID = e.StudentID " +
+                "WHERE e.CourseID = ?";
 
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, Integer.parseInt(currentClassId));
 
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    System.out.println("No students enrolled in this class.");
+                } else {
+                    System.out.println("Students:");
+                    do {
+                        String name = rs.getString("Name");
+                        System.out.println(name);
+                    } while (rs.next());
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Error fetching students: " + e.getMessage());
+        }
     }
+
 }

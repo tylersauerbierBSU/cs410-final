@@ -303,60 +303,30 @@ public class GradeManagerShell {
             return;
         }
 
-        // Extract assignment details from the command
-        String[] parts = command.split(" ");
-        if (parts.length != 5) {
-            System.out.println("Invalid add-assignment command format. Usage: add-assignment <name> <category> <description> <points>");
+        String[] parse = command.split(" ");
+
+        if (parse.length != 1 && parse.length != 4) {
+            System.out.println("Invalid add-assignment command format. Usage: add-assignment <username> " +
+                    "[<studentID> <Last> <First>]");
             return;
         }
 
-        String name = parts[1];
-        String categoryName = parts[2];
-        String description = parts[3];
-        int points;
-        try {
-            points = Integer.parseInt(parts[4]);
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid points. Please enter a whole number.");
-            return;
+        String sql;
+
+        if (parse.length == 1) { // this means it's the already existing student command
+
         }
 
-        // Find the CategoryID for the given category name
-        int categoryID = getCategoryID(categoryName);
-        if (categoryID == -1) {
-            System.out.println("Category '" + categoryName + "' not found.");
-            return;
+        else if (parse.length == 4) { // this means it's the new student
+            sql = "INSERT INTO Students (Username, Name) " +
+                    "VALUES (?, ?) " +
+                    "ON DUPLICATE KEY UPDATE Name = VALUES(Name) ";
+
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, parse[0]);
         }
 
-        // Prepare and execute the insert statement
-        String sql = "INSERT INTO Assignments (CategoryID, Name, Description, Points) VALUES (?, ?, ?, ?)";
-        PreparedStatement stmt = conn.prepareStatement(sql);
-        stmt.setInt(1, categoryID);
-        stmt.setString(2, name);
-        stmt.setString(3, description);
-        stmt.setInt(4, points);
 
-        try {
-            stmt.executeUpdate();
-            System.out.println("Assignment '" + name + "' added successfully.");
-        } catch (SQLException e) {
-            System.out.println("Error adding assignment: " + e.getMessage());
-        }
-    }
 
-    // Helper method to find the CategoryID for a given category name
-    private int getCategoryID(String categoryName) throws SQLException {
-        String sql = "SELECT CategoryID FROM Categories WHERE CourseID = ? AND Name = ?";
-        PreparedStatement stmt = conn.prepareStatement(sql);
-        stmt.setInt(1, Integer.parseInt(currentClassId));
-        stmt.setString(2, categoryName);
-
-        try (ResultSet rs = stmt.executeQuery()) {
-            if (rs.next()) {
-                return rs.getInt("CategoryID");
-            } else {
-                return -1;
-            }
-        }
     }
 }

@@ -4,14 +4,14 @@ import java.sql.*;
 import java.util.Scanner;
 
 public class GradeManagerShell {
-    private static final String DB_URL = "jdbc:mysql://localhost:3306/finalproject";
-    private static final String USER = "user";
-    private static final String PASS = "password";
-
     private Connection conn = null;
     private String currentClassId = null;
+    private static int port;
+    private static String password;
 
     public static void main(String[] args) {
+        port = Integer.parseInt(args[0]);
+        password = args[1];
         GradeManagerShell shell = new GradeManagerShell();
         shell.run();
     }
@@ -40,7 +40,7 @@ public class GradeManagerShell {
     }
 
     private void connectToDatabase() throws SQLException {
-        conn = DriverManager.getConnection(DB_URL, USER, PASS);
+        conn = DatabaseSetup.getDatabaseConnection(port, password);
         System.out.println("Connected to the database successfully.");
     }
 
@@ -95,7 +95,7 @@ public class GradeManagerShell {
         String courseNumber = parts[1];
         String term = parts[2];
         int sectionNumber = Integer.parseInt(parts[3]);
-        String description = command.substring(command.indexOf('"') + 1, command.lastIndexOf('"'));
+        String description = parts[4];
 
         String sql = "INSERT INTO Courses (CourseNumber, Term, SectionNumber, Description) VALUES (?, ?, ?, ?)";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {

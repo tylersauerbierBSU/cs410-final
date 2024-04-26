@@ -468,6 +468,48 @@ public class GradeManagerShell {
         }
     }
 
+    public void gradeAssignment(String assignmentName, String username, double grade) {
+        try {
+            String query = "SELECT AssignmentID, Points FROM Assignments JOIN Categories ON Assignments.CategoryID = Categories.CategoryID WHERE Assignments.Name = ?";
+            PreparedStatement pstmt = connection.prepareStatement(query);
+            pstmt.setString(1, assignmentName);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (!rs.next()) {
+                System.out.println("Assignment not found.");
+                return;
+            }
+            int assignmentId = rs.getInt("AssignmentID");
+            double maxPoints = rs.getDouble("Points");
+
+            query = "SELECT StudentID FROM Students WHERE Username = ?";
+            pstmt = connection.prepareStatement(query);
+            pstmt.setString(1, username);
+            rs = pstmt.executeQuery();
+
+            if (!rs.next()) {
+                System.out.println("Student not found.");
+                return;
+            }
+            int studentId = rs.getInt("StudentID");
+
+            if (grade > maxPoints) {
+                System.out.printf("Warning: The grade entered (%.2f) exceeds the maximum points (%.2f) for this assignment.\n", grade, maxPoints);
+            }
+
+            query = "INSERT INTO Grades (StudentID, AssignmentID, Grade) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE Grade = ?";
+            pstmt = connection.prepareStatement(query);
+            pstmt.setInt(1, studentId);
+            pstmt.setInt(2, assignmentId);
+            pstmt.setDouble(3, grade);
+            pstmt.setDouble(4, grade);
+            pstmt.executeUpdate();
+
+            System.out.println("Grade assigned successfully.");
+        } catch (SQLException e) {
+            System.out.println("Error when assigning grade: " + e.getMessage());
+        }
+
 
 
 }

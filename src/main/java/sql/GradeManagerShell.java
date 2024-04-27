@@ -77,6 +77,12 @@ public class GradeManagerShell {
                 addStudent(command);
             } else if (command.startsWith("show-students")) {
                 showStudents(command);
+            }  else if (command.equals("gradebook")) {
+                showGradebook();
+            } else if (command.startsWith("grade")) {
+                assignGrade(command);
+            } else if (command.startsWith("student-grades")) {
+                showStudentGrades(command);
             } else {
                 System.out.println("Unknown command. Type 'help' for commands.");
             }
@@ -109,11 +115,16 @@ public class GradeManagerShell {
     }
 
     private void listClasses() throws SQLException {
-        String sql = "SELECT CourseID, CourseNumber, Term, SectionNumber, Description FROM Courses";
+        String sql = "SELECT c.CourseNumber, c.Term, c.SectionNumber, c.Description, COUNT(e.StudentID) AS EnrolledStudents " +
+                "FROM Courses c " +
+                "LEFT JOIN Enrollments e ON c.CourseID = e.CourseID " +
+                "GROUP BY c.CourseID, c.CourseNumber, c.Term, c.SectionNumber, c.Description " +
+                "ORDER BY c.CourseNumber, c.Term, c.SectionNumber";
+
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                System.out.println(rs.getString("CourseNumber") + " " + rs.getString("Term") + " Section " + rs.getInt("SectionNumber") + ": " + rs.getString("Description"));
+                System.out.println(rs.getString("CourseNumber") + " " + rs.getString("Term") + " Section " + rs.getInt("SectionNumber") + ": " + rs.getString("Description") + " (" + rs.getInt("EnrolledStudents") + " students)");
             }
         }
     }
@@ -274,6 +285,7 @@ public class GradeManagerShell {
             if (rs.next()) {
                 System.out.println("Assignments for Course ID " + currentClassId + ":");
                 String currentCategory = null;
+
                 do {
                     String categoryName = rs.getString("CategoryName");
                     String assignmentName = rs.getString("AssignmentName");
@@ -282,7 +294,7 @@ public class GradeManagerShell {
                     if (currentCategory == null || !currentCategory.equals(categoryName)) {
                         // New category
                         if (currentCategory != null) {
-                            System.out.println("  - Total: - points"); // Add total for previous category (if any)
+                            System.out.println(); // Add an empty line between categories
                         }
                         currentCategory = categoryName;
                         System.out.println("  Category: " + categoryName);
@@ -290,16 +302,13 @@ public class GradeManagerShell {
 
                     System.out.printf("    - %s (%d points)\n", assignmentName, points);
                 } while (rs.next());
-
-                // Print total for the last category
-                if (currentCategory != null) {
-                    System.out.println("  - Total: - points"); // Placeholder, calculate actual total here
-                }
             } else {
                 System.out.println("No assignments found for this class.");
             }
         }
     }
+
+
 
     /**
      * Adds a new assignment
@@ -328,22 +337,42 @@ public class GradeManagerShell {
             return;
         }
 
-        String sql = "INSERT INTO Assignments (CourseID, Name, Category, Description, Points) " +
-                "VALUES (?, ?, ?, ?, ?)";
+        // Check for existing assignment with the same name within the category for the current course
+        String sqlCheck = "SELECT 1 FROM Assignments a " +
+                "INNER JOIN Categories c ON a.CategoryID = c.CategoryID " +
+                "WHERE c.CourseID = ? AND a.Name = ?";
+        try (PreparedStatement checkStmt = conn.prepareStatement(sqlCheck)) {
+            checkStmt.setInt(1, Integer.parseInt(currentClassId));
+            checkStmt.setString(2, name);
+            try (ResultSet rs = checkStmt.executeQuery()) {
+                if (rs.next()) {
+                    System.out.println("Assignment with name '" + name + "' already exists in category '" + category + "' for this course.");
+                    return;
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Error checking for existing assignment: " + e.getMessage());
+            return;
+        }
 
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+        // Insert assignment using prepared statement with JOIN in subquery
+        String sqlInsert = "INSERT INTO Assignments (CategoryID, Name, Description, Points) " +
+                "VALUES ( (SELECT c.CategoryID FROM Categories c WHERE c.CourseID = ? AND c.Name = ?) , ?, ?, ?)";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sqlInsert)) {
             stmt.setInt(1, Integer.parseInt(currentClassId));
-            stmt.setString(2, name);
-            stmt.setString(3, category);
+            stmt.setString(2, category);
+            stmt.setString(3, name);
             stmt.setString(4, description);
             stmt.setInt(5, points);
 
             stmt.executeUpdate();
             System.out.println("Assignment '" + name + "' added successfully.");
         } catch (SQLException e) {
-            System.out.println("Error adding assignment: " + e.getMessage());
+            System.out.println("Error adding assignment: "  + e.getMessage());
         }
     }
+
 
 
     // STUDENT MANAGEMENT CODE
@@ -468,48 +497,180 @@ public class GradeManagerShell {
         }
     }
 
-    public void gradeAssignment(String assignmentName, String username, double grade) {
-        try {
-            String query = "SELECT AssignmentID, Points FROM Assignments JOIN Categories ON Assignments.CategoryID = Categories.CategoryID WHERE Assignments.Name = ?";
-            PreparedStatement pstmt = connection.prepareStatement(query);
-            pstmt.setString(1, assignmentName);
-            ResultSet rs = pstmt.executeQuery();
-
-            if (!rs.next()) {
-                System.out.println("Assignment not found.");
-                return;
-            }
-            int assignmentId = rs.getInt("AssignmentID");
-            double maxPoints = rs.getDouble("Points");
-
-            query = "SELECT StudentID FROM Students WHERE Username = ?";
-            pstmt = connection.prepareStatement(query);
-            pstmt.setString(1, username);
-            rs = pstmt.executeQuery();
-
-            if (!rs.next()) {
-                System.out.println("Student not found.");
-                return;
-            }
-            int studentId = rs.getInt("StudentID");
-
-            if (grade > maxPoints) {
-                System.out.printf("Warning: The grade entered (%.2f) exceeds the maximum points (%.2f) for this assignment.\n", grade, maxPoints);
-            }
-
-            query = "INSERT INTO Grades (StudentID, AssignmentID, Grade) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE Grade = ?";
-            pstmt = connection.prepareStatement(query);
-            pstmt.setInt(1, studentId);
-            pstmt.setInt(2, assignmentId);
-            pstmt.setDouble(3, grade);
-            pstmt.setDouble(4, grade);
-            pstmt.executeUpdate();
-
-            System.out.println("Grade assigned successfully.");
-        } catch (SQLException e) {
-            System.out.println("Error when assigning grade: " + e.getMessage());
+    private void assignGrade(String command) throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
         }
 
+        // Extract username, assignment name, and grade from the command string
+        String[] parts = command.split(" ", 4); // Split into max 4 parts
+        if (parts.length < 4) {
+            System.out.println("Invalid command format. Usage: assign-grade <assignment-name> <username>  <grade>");
+            return;
+        }
 
+        String username = parts[2];
+        String assignmentName = parts[1];
+        int grade;
+        try {
+            grade = Integer.parseInt(parts[3]);
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid grade. Grade must be a number.");
+            return;
+        }
+
+        // Check if assignment exists in current course and retrieve its ID and max points
+        String sql = "SELECT a.AssignmentID, a.Points AS MaxPoints " +
+                "FROM Assignments a " +
+                "INNER JOIN Categories c ON a.CategoryID = c.CategoryID " +
+                "WHERE c.CourseID = ? AND a.Name = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, Integer.parseInt(currentClassId));
+            stmt.setString(2, assignmentName);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    System.out.println("Assignment '" + assignmentName + "' not found in this course.");
+                    return;
+                }
+
+                int assignmentId = rs.getInt("AssignmentID");
+                int maxPoints = rs.getInt("MaxPoints");
+
+                if (grade > maxPoints) {
+                    System.out.println("WARNING: Grade exceeds maximum points (" + maxPoints + ") for assignment '" + assignmentName + "'.");
+                }
+
+                // Insert a new grade entry if student and assignment combination doesn't exist
+                sql = "INSERT INTO Grades (StudentID, AssignmentID, Grade) " +
+                        "VALUES ((SELECT StudentID FROM Students WHERE Username = ?), ?, ?)";
+
+                try (PreparedStatement insertStmt = conn.prepareStatement(sql)) {
+                    insertStmt.setString(1, username);
+                    insertStmt.setInt(2, assignmentId);
+                    insertStmt.setInt(3, grade);
+                    int rowsInserted = insertStmt.executeUpdate();
+
+                    if (rowsInserted == 1) {
+                        System.out.println("Grade assigned for student '" + username + "' for assignment '" + assignmentName + "'.");
+                    } else {
+                        // Handle potential issue (e.g., student might not exist)
+                        System.out.println("An unexpected error occurred while assigning the grade.");
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Error assigning grade: " + e.getMessage());
+        }
+    }
+
+
+
+
+    private void showStudentGrades(String command) throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
+        }
+
+        String[] parts = command.split(" ");
+
+        String username = parts.length > 1 ? parts[1] : null; // Assuming space after "student-grades "
+
+        if (username == null) {
+            System.out.println("Invalid command format. Usage: student-grades <username>");
+            return;
+        }
+
+        String sql = "SELECT c.Name AS CategoryName, " +
+                "SUM(a.Points) AS MaxPointsInCategory, " +
+                "COALESCE(SUM(g.Grade * a.Points) / SUM(a.Points), 0) AS CategoryScore " +
+                "FROM Categories c " +
+                "INNER JOIN Assignments a ON c.CategoryID = a.CategoryID " +
+                "LEFT JOIN Grades g ON g.StudentID = (SELECT StudentID FROM Students WHERE Username = ?) " +
+                "                    AND g.AssignmentID = a.AssignmentID " +
+                "GROUP BY c.Name " +
+                "ORDER BY c.Name; ";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, username);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                double totalMaxPoints = 0;
+                double totalScore = 0;
+
+                System.out.println("Student Grades - " + username);
+                System.out.println("------------------------");
+
+                while (rs.next()) {
+                    String categoryName = rs.getString("CategoryName");
+                    double maxPointsInCategory = rs.getDouble("MaxPointsInCategory");
+                    double categoryScore = rs.getDouble("CategoryScore");
+
+                    System.out.println(categoryName + ":");
+                    System.out.printf("  * Max Points: %.1f\n", maxPointsInCategory);
+                    if (categoryScore > 0) {
+                        System.out.printf("  * Score: %.1f (out of %.1f)\n", categoryScore, maxPointsInCategory);
+                    } else {
+                        System.out.println("  * No grades in this category yet.");
+                    }
+                    System.out.println();
+
+                    totalMaxPoints += maxPointsInCategory;
+                    totalScore += categoryScore;
+                }
+
+                System.out.println("------------------------");
+                System.out.printf("Total Possible Points: %.1f\n", totalMaxPoints);
+                System.out.printf("Total Score: %.1f (out of %.1f)\n", totalScore, totalMaxPoints);
+            }
+        } catch (SQLException e) {
+            System.out.println("Error fetching student grades: " + e.getMessage());
+        }
+    }
+
+
+    private void showGradebook() throws SQLException {
+        if (currentClassId == null) {
+            System.out.println("No class is currently selected.");
+            return;
+        }
+
+        String sql = "SELECT s.Username, s.StudentID, s.Name, " +
+                "COALESCE(SUM(g.Grade * a.Points) / SUM(a.Points), 0) AS TotalScore " +
+                "FROM Students s " +
+                "INNER JOIN Enrollments e ON s.StudentID = e.StudentID AND e.CourseID = ? " +  // Filter for current course (enrolled)
+                "LEFT JOIN Grades g ON g.StudentID = s.StudentID " +  // Student grades
+                "LEFT JOIN Assignments a ON g.AssignmentID = a.AssignmentID " +  // Assignments
+                "GROUP BY s.Username, s.StudentID, s.Name " +
+                "ORDER BY s.Username; ";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, Integer.parseInt(currentClassId));
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                System.out.println("Gradebook");
+                System.out.println("-----------------------------------------");
+                System.out.println("| Username | Student ID | Name           | Total Score |");
+                System.out.println("|-----------|------------|----------------|--------------|");
+
+                while (rs.next()) {
+                    String username = rs.getString("Username");
+                    int studentId = rs.getInt("StudentID");
+                    String name = rs.getString("Name");
+                    double totalScore = rs.getDouble("TotalScore");
+
+                    System.out.printf("| %-9s | %10d | %-15s | %8.2f        |\n",
+                            username, studentId, name, totalScore);
+                }
+
+                System.out.println("-----------------------------------------");
+            }
+        } catch (SQLException e) {
+            System.out.println("Error fetching gradebook data: " + e.getMessage());
+        }
+    }
 
 }

@@ -3,11 +3,19 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+/**
+ * Author: Anton Leslie, Andrew Martinez, Tyler Sauerbier
+ * DatabaseSetup class for setting up the database and its tables.
+ */
 public class DatabaseSetup {
 
+    /**
+     * Main method to execute the database setup.
+     * @param args The command-line arguments.
+     */
     public static void main(String[] args) {
-           // Explicitly load the MySQL JDBC driver to handle environments where automatic driver loading is not happening.
-           try {
+        // Explicitly load the MySQL JDBC driver to handle environments where automatic driver loading is not happening.
+        try {
             Class.forName("com.mysql.cj.jdbc.Driver"); // Ensure the driver is registered
         } catch (ClassNotFoundException e) {
             System.out.println("MySQL JDBC driver not found.");

@@ -1,87 +1,104 @@
-import java.sql.*;
-import java.util.Scanner;
+/*
+ * GradeManagerShell - A simple command-line interface for managing grades and students in a database.
+ * Author: Anton Leslie, Andrew Martinez, Tyler Sauerbier
+ * Description: This program provides a shell interface to interact with a database containing information about classes, assignments, categories, and students.
+ */
 
-public class GradeManagerShell {
-    private static final String DB_URL = "jdbc:mysql://localhost:3306/finalproject";
-    private static final String USER = "user";
-    private static final String PASS = "password";
-
-    private Connection conn = null;
-    private String currentClassId = null;
-
-    public static void main(String[] args) {
-        GradeManagerShell shell = new GradeManagerShell();
-        shell.run();
-    }
-
-    public void run() {
-        try {
-            connectToDatabase();
-            Scanner scanner = new Scanner(System.in);
-            String command;
-
-            System.out.println("Welcome to the Grade Management Shell. Type 'help' for commands.");
-            while (true) {
-                System.out.print("Command> ");
-                command = scanner.nextLine();
-                if (command.equals("exit")) {
-                    break;
-                }
-                interpretCommand(command);
-            }
-            scanner.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            closeConnection();
-        }
-    }
-
-    private void connectToDatabase() throws SQLException {
-        conn = DriverManager.getConnection(DB_URL, USER, PASS);
-        System.out.println("Connected to the database successfully.");
-    }
-
-    private void closeConnection() {
-        try {
-            if (conn != null && !conn.isClosed()) {
-                conn.close();
-                System.out.println("Connection closed.");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void interpretCommand(String command) {
-        try {
-            if (command.startsWith("new-class")) {
-                createClass(command);
-            } else if (command.equals("list-classes")) {
-                listClasses();
-            } else if (command.startsWith("select-class")) {
-                selectClass(command);
-            } else if (command.equals("show-class")) {
-                showClass();
-            } else if (command.equals("show-categories")) {
-                showCategories();
-            } else if (command.startsWith("add-category")) {
-                addCategory(command);
-            } else if (command.equals("show-assignment")) {
-                showAssignments();
-            } else if (command.startsWith("add-assignment")) {
-                addAssignment(command);
-            } else if (command.startsWith("add-student")) {
-                addStudent(command);
-            } else if (command.equals("show-students")) {
-                showStudents();
-            } else {
-                System.out.println("Unknown command. Type 'help' for commands.");
-            }
-        } catch (SQLException e) {
-            System.out.println("Error executing command: " + e.getMessage());
-        }
-    }
+ import java.sql.*;
+ import java.util.Scanner;
+ 
+ public class GradeManagerShell {
+     // Database connection parameters
+     private static final String DB_URL = "jdbc:mysql://localhost:3306/finalproject";
+     private static final String USER = "user";
+     private static final String PASS = "password";
+ 
+     // Database connection object
+     private Connection conn = null;
+     // Variable to store the current class ID
+     private String currentClassId = null;
+ 
+     // Main method
+     public static void main(String[] args) {
+         GradeManagerShell shell = new GradeManagerShell();
+         shell.run();
+     }
+ 
+     // Method to run the shell
+     public void run() {
+         try {
+             connectToDatabase(); // Connect to the database
+             Scanner scanner = new Scanner(System.in);
+             String command;
+ 
+             // Display welcome message
+             System.out.println("Welcome to the Grade Management Shell. Type 'help' for commands.");
+ 
+             // Main command loop
+             while (true) {
+                 System.out.print("Command> ");
+                 command = scanner.nextLine();
+                 if (command.equals("exit")) {
+                     break;
+                 }
+                 interpretCommand(command); // Interpret and execute the command
+             }
+             scanner.close();
+         } catch (SQLException e) {
+             e.printStackTrace();
+         } finally {
+             closeConnection(); // Close the database connection
+         }
+     }
+ 
+     // Method to connect to the database
+     private void connectToDatabase() throws SQLException {
+         conn = DriverManager.getConnection(DB_URL, USER, PASS);
+         System.out.println("Connected to the database successfully.");
+     }
+ 
+     // Method to close the database connection
+     private void closeConnection() {
+         try {
+             if (conn != null && !conn.isClosed()) {
+                 conn.close();
+                 System.out.println("Connection closed.");
+             }
+         } catch (SQLException e) {
+             e.printStackTrace();
+         }
+     }
+ 
+     // Method to interpret and execute the user command
+     private void interpretCommand(String command) {
+         try {
+             if (command.startsWith("new-class")) {
+                 createClass(command);
+             } else if (command.equals("list-classes")) {
+                 listClasses();
+             } else if (command.startsWith("select-class")) {
+                 selectClass(command);
+             } else if (command.equals("show-class")) {
+                 showClass();
+             } else if (command.equals("show-categories")) {
+                 showCategories();
+             } else if (command.startsWith("add-category")) {
+                 addCategory(command);
+             } else if (command.equals("show-assignment")) {
+                 showAssignments();
+             } else if (command.startsWith("add-assignment")) {
+                 addAssignment(command);
+             } else if (command.startsWith("add-student")) {
+                 addStudent(command);
+             } else if (command.equals("show-students")) {
+                 showStudents();
+             } else {
+                 System.out.println("Unknown command. Type 'help' for commands.");
+             }
+         } catch (SQLException e) {
+             System.out.println("Error executing command: " + e.getMessage());
+         }
+     }
 
     private void createClass(String command) throws SQLException {
         // Parse command to extract class details
